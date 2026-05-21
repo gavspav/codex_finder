@@ -66,10 +66,10 @@
         <div class="toolbar" role="toolbar" aria-label="View controls">
           <label class="search-box">
             <svg aria-hidden="true"><use href="#icon-search"></use></svg>
-            <input id="searchInput" type="search" autocomplete="off" placeholder="Search folders" />
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Search projects" />
           </label>
 
-          <select id="sortSelect" aria-label="Sort folders">
+          <select id="sortSelect" aria-label="Sort projects">
             <option value="recent">Recently changed</option>
             <option value="date">Date created</option>
             <option value="name">Name</option>
@@ -85,17 +85,17 @@
             </button>
           </div>
 
-          <button id="refreshButton" class="icon-button" type="button" aria-label="Refresh folders">
+          <button id="refreshButton" class="icon-button" type="button" aria-label="Refresh projects">
             <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
           </button>
         </div>
       </header>
 
       <main class="layout">
-        <aside class="filter-panel" aria-label="Folder filters">
+        <aside class="filter-panel" aria-label="Project filters">
           <div class="panel-block">
             <button id="allFilter" class="filter-row active" type="button">
-              <span>All folders</span>
+              <span>All projects</span>
               <strong id="allCount">0</strong>
             </button>
             <button id="favoriteFilter" class="filter-row" type="button">
@@ -113,7 +113,7 @@
         <section class="content-area" aria-live="polite">
           <div class="content-header">
             <div>
-              <h2 id="viewTitle">Folders</h2>
+              <h2 id="viewTitle">Projects</h2>
               <p id="resultMeta">Loading...</p>
             </div>
             <div id="statusPill" class="status-pill">Starting</div>
@@ -121,7 +121,7 @@
 
           <div id="emptyState" class="empty-state" hidden>
             <svg aria-hidden="true"><use href="#icon-search"></use></svg>
-            <h3>No folders found</h3>
+            <h3>No projects found</h3>
           </div>
 
           <div id="projectGrid" class="project-grid"></div>

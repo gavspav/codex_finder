@@ -15,6 +15,7 @@ const CODEX_CLI =
   process.env.CODEX_CLI || "/Applications/Codex.app/Contents/Resources/codex";
 const STATIC_DIR = path.join(__dirname, "public");
 const STATE_FILE = path.join(__dirname, ".codex-finder-state.json");
+const CODEX_CONFIG_FILE = path.join(os.homedir(), ".codex", "config.toml");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -115,6 +116,15 @@ function encodeId(value) {
   return Buffer.from(value).toString("base64url");
 }
 
+function formatDisplayPath(targetPath) {
+  const home = os.homedir();
+  if (targetPath === home) return "~";
+  if (targetPath.startsWith(`${home}${path.sep}`)) {
+    return `~${path.sep}${path.relative(home, targetPath)}`;
+  }
+  return targetPath;
+}
+
 function markerForFile(name) {
   const lower = name.toLowerCase();
   if (lower === "package.json") return "Node";
@@ -195,7 +205,9 @@ async function projectFromPath(projectPath, dateFolder = null) {
   const stat = await fs.stat(projectPath);
   const inspection = await inspectProject(projectPath, stat);
   const folder = path.basename(projectPath);
-  const relativePath = path.relative(ROOT, projectPath);
+  const relativePath = isInside(ROOT, projectPath)
+    ? path.relative(ROOT, projectPath)
+    : formatDisplayPath(projectPath);
 
   return {
     id: encodeId(projectPath),
@@ -214,7 +226,67 @@ async function projectFromPath(projectPath, dateFolder = null) {
   };
 }
 
-async function scanProjects() {
+function unescapeTomlBasicString(value) {
+  return value.replace(/\\(["\\btnfr])/g, (match, char) => {
+    const escapes = {
+      '"': '"',
+      "\\": "\\",
+      b: "\b",
+      t: "\t",
+      n: "\n",
+      f: "\f",
+      r: "\r",
+    };
+    return escapes[char] || match;
+  });
+}
+
+async function readConfiguredProjectPaths() {
+  let raw;
+  try {
+    raw = await fs.readFile(CODEX_CONFIG_FILE, "utf8");
+  } catch {
+    return [];
+  }
+
+  const projectPaths = [];
+  const projectHeader = /^\[projects\."((?:\\.|[^"\\])*)"\]$/;
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.trim().match(projectHeader);
+    if (match) {
+      projectPaths.push(path.resolve(unescapeTomlBasicString(match[1])));
+    }
+  }
+
+  return Array.from(new Set(projectPaths));
+}
+
+function isDatedCodexChatPath(projectPath) {
+  if (!isInside(ROOT, projectPath)) return false;
+  const relative = path.relative(ROOT, projectPath).split(path.sep);
+  return relative.length >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(relative[0]);
+}
+
+async function scanConfiguredProjects() {
+  const projectPaths = await readConfiguredProjectPaths();
+  const visibleProjectPaths = projectPaths.filter((projectPath) => !isDatedCodexChatPath(projectPath));
+  const projects = [];
+
+  for (const projectPath of visibleProjectPaths) {
+    try {
+      const stat = await fs.stat(projectPath);
+      if (stat.isDirectory()) {
+        projects.push(await projectFromPath(projectPath, null));
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return projects.sort((a, b) => b.latestMs - a.latestMs);
+}
+
+async function scanCodexChatFolders() {
   if (!(await pathExists(ROOT))) {
     throw new Error(`Codex root does not exist: ${ROOT}`);
   }
@@ -261,14 +333,42 @@ async function scanProjects() {
   return projects.sort((a, b) => b.latestMs - a.latestMs);
 }
 
+async function scanProjectCatalog() {
+  const configuredProjects = await scanConfiguredProjects();
+  if (configuredProjects.length > 0) {
+    return {
+      source: "codex-config",
+      sourceLabel: "Codex configured projects",
+      projects: configuredProjects,
+    };
+  }
+
+  return {
+    source: "codex-root",
+    sourceLabel: "Codex chat folders",
+    projects: await scanCodexChatFolders(),
+  };
+}
+
+async function scanProjects() {
+  const catalog = await scanProjectCatalog();
+  return catalog.projects;
+}
+
+async function getAllowedProjectPaths() {
+  const projects = await scanProjects();
+  return new Set(projects.map((project) => project.path));
+}
+
 async function requireProjectPath(rawPath) {
   if (typeof rawPath !== "string" || rawPath.trim() === "") {
     throw new Error("A project path is required");
   }
 
   const targetPath = path.resolve(rawPath);
-  if (!isInside(ROOT, targetPath)) {
-    throw new Error("Project path is outside the configured Codex root");
+  const allowedProjectPaths = await getAllowedProjectPaths();
+  if (!allowedProjectPaths.has(targetPath)) {
+    throw new Error("Project path is not in the configured project list");
   }
 
   const stat = await fs.stat(targetPath);
@@ -314,6 +414,7 @@ async function handleApi(req, res, url) {
     if (req.method === "GET" && url.pathname === "/api/config") {
       return sendJson(res, 200, {
         root: ROOT,
+        codexConfig: CODEX_CONFIG_FILE,
         codexCli: CODEX_CLI,
         codexCliAvailable: await pathExists(CODEX_CLI),
         version: "0.1.0",
@@ -321,10 +422,13 @@ async function handleApi(req, res, url) {
     }
 
     if (req.method === "GET" && url.pathname === "/api/projects") {
-      const [projects, state] = await Promise.all([scanProjects(), readState()]);
+      const [catalog, state] = await Promise.all([scanProjectCatalog(), readState()]);
+      const { projects } = catalog;
       const favoriteSet = new Set(state.favorites);
       return sendJson(res, 200, {
         root: ROOT,
+        source: catalog.source,
+        sourceLabel: catalog.sourceLabel,
         count: projects.length,
         favorites: state.favorites,
         projects: projects.map((project) => ({

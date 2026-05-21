@@ -140,12 +140,14 @@ function visibleProjects() {
 
 function renderFilters() {
   const favoriteCount = state.projects.filter((project) => project.favorite).length;
+  const dateCounts = getDateCounts().filter(([date]) => date !== "No date");
   els.allCount.textContent = state.projects.length;
   els.favoriteCount.textContent = favoriteCount;
   els.allFilter.classList.toggle("active", !state.showFavorites && state.activeDate === "all");
   els.favoriteFilter.classList.toggle("active", state.showFavorites);
+  els.dateFilters.closest(".panel-block").hidden = dateCounts.length === 0;
 
-  els.dateFilters.innerHTML = getDateCounts()
+  els.dateFilters.innerHTML = dateCounts
     .map(
       ([date, count]) => `
         <button class="date-button ${state.activeDate === date ? "active" : ""}" type="button" data-date="${escapeHtml(date)}">
@@ -198,14 +200,14 @@ function renderProjects() {
   els.projectGrid.hidden = projects.length === 0;
   els.projectGrid.innerHTML = projects.map(projectCard).join("");
 
-  const noun = projects.length === 1 ? "folder" : "folders";
+  const noun = projects.length === 1 ? "project" : "projects";
   const total = state.projects.length;
   const suffix = state.query ? ` matching "${state.query}"` : "";
   els.resultMeta.textContent = `${projects.length} ${noun} of ${total}${suffix}`;
   els.viewTitle.textContent = state.showFavorites
     ? "Favourites"
     : state.activeDate === "all"
-      ? "Folders"
+      ? "Projects"
       : formatDate(state.activeDate);
 }
 
@@ -220,7 +222,7 @@ async function loadProjects() {
   try {
     const [config, data] = await Promise.all([fetchJson("/api/config"), fetchJson("/api/projects")]);
     state.projects = data.projects;
-    els.rootLabel.textContent = config.root;
+    els.rootLabel.textContent = data.sourceLabel || config.root;
     setStatus(config.codexCliAvailable ? "Ready" : "Fallback launch", "ready");
     render();
   } catch (error) {
