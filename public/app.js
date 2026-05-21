@@ -3,9 +3,12 @@ const state = {
   query: localStorage.getItem("codexFinder.query") || "",
   sort: localStorage.getItem("codexFinder.sort") || "recent",
   view: localStorage.getItem("codexFinder.view") || "grid",
+  scale: localStorage.getItem("codexFinder.scale") || "1",
   activeDate: "all",
   showFavorites: false,
   selectedPath: null,
+  chatCache: new Map(),
+  chatLoading: new Set(),
   loading: false,
 };
 
@@ -13,14 +16,12 @@ const els = {
   rootLabel: document.getElementById("rootLabel"),
   searchInput: document.getElementById("searchInput"),
   sortSelect: document.getElementById("sortSelect"),
-  gridButton: document.getElementById("gridButton"),
-  listButton: document.getElementById("listButton"),
+  scaleSlider: document.getElementById("scaleSlider"),
   refreshButton: document.getElementById("refreshButton"),
   allFilter: document.getElementById("allFilter"),
   favoriteFilter: document.getElementById("favoriteFilter"),
   allCount: document.getElementById("allCount"),
   favoriteCount: document.getElementById("favoriteCount"),
-  dateFilters: document.getElementById("dateFilters"),
   viewTitle: document.getElementById("viewTitle"),
   resultMeta: document.getElementById("resultMeta"),
   statusPill: document.getElementById("statusPill"),
@@ -39,6 +40,10 @@ const relativeFormatter = new Intl.RelativeTimeFormat("en-GB", { numeric: "auto"
 
 function icon(name) {
   return `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
+}
+
+function applyScale() {
+  document.documentElement.style.setProperty("--folder-scale", state.scale);
 }
 
 async function fetchJson(url, options = {}) {
@@ -86,6 +91,7 @@ function setStatus(text, type = "") {
 }
 
 let toastTimer = 0;
+let lastOpen = { path: "", ms: 0 };
 function showToast(message) {
   window.clearTimeout(toastTimer);
   els.toast.textContent = message;
@@ -140,52 +146,40 @@ function visibleProjects() {
 
 function renderFilters() {
   const favoriteCount = state.projects.filter((project) => project.favorite).length;
-  const dateCounts = getDateCounts().filter(([date]) => date !== "No date");
   els.allCount.textContent = state.projects.length;
   els.favoriteCount.textContent = favoriteCount;
   els.allFilter.classList.toggle("active", !state.showFavorites && state.activeDate === "all");
   els.favoriteFilter.classList.toggle("active", state.showFavorites);
-  els.dateFilters.closest(".panel-block").hidden = dateCounts.length === 0;
-
-  els.dateFilters.innerHTML = dateCounts
-    .map(
-      ([date, count]) => `
-        <button class="date-button ${state.activeDate === date ? "active" : ""}" type="button" data-date="${escapeHtml(date)}">
-          <span>${escapeHtml(formatDate(date))}</span>
-          <strong>${count}</strong>
-        </button>
-      `,
-    )
-    .join("");
 }
 
 function projectCard(project) {
   const isSelected = state.selectedPath === project.path;
-  const badges = project.markers.length
-    ? project.markers.map((marker) => `<span class="badge">${escapeHtml(marker)}</span>`).join("")
-    : '<span class="badge">Folder</span>';
-  const changed = formatRelative(project.latestMs);
-  const date = formatDate(project.date);
+  const chats = state.chatCache.get(project.path);
+  const chatState = state.chatLoading.has(project.path) ? "Loading..." : "No recent chats";
+  const chatItems = chats
+    ? chats
+        .map(
+          (chat) => `
+            <button class="chat-item" type="button" data-action="chat" data-chat-id="${escapeHtml(chat.id)}">
+              <span>${escapeHtml(chat.title)}</span>
+            </button>
+          `,
+        )
+        .join("") || `<div class="chat-empty">${chatState}</div>`
+    : `<div class="chat-empty">${chatState}</div>`;
 
   return `
-    <article class="project-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(project.path)}" tabindex="0" aria-label="${escapeHtml(project.title)}">
-      <div class="card-top">
-        <div class="folder-art">${icon("folder")}</div>
-        <button class="icon-button favorite-button ${project.favorite ? "active" : ""}" type="button" data-action="favorite" aria-label="Favourite">
+    <article class="project-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(project.path)}" tabindex="0" aria-label="${escapeHtml(project.title)}" title="${escapeHtml(project.relativePath)}">
+      <div class="folder-art">
+        <span class="folder-tab"></span>
+        <span class="folder-body"></span>
+        <button class="favorite-button ${project.favorite ? "active" : ""}" type="button" data-action="favorite" aria-label="Favourite ${escapeHtml(project.title)}">
           ${icon("star")}
         </button>
       </div>
-      <div class="card-body">
-        <div>
-          <div class="project-title">${escapeHtml(project.title)}</div>
-          <div class="project-path">${escapeHtml(project.relativePath)}</div>
-        </div>
-        <div class="project-meta">${date} · ${project.fileCount} files · ${changed}</div>
-        <div class="badges">${badges}</div>
-      </div>
-      <div class="card-actions">
-        <button class="open-button" type="button" data-action="open">${icon("open")}<span>Open</span></button>
-        <button class="ghost-button" type="button" data-action="reveal" aria-label="Reveal in Finder">${icon("eye")}</button>
+      <div class="project-title">${escapeHtml(project.title)}</div>
+      <div class="chat-popover" role="menu" aria-label="Recent chats for ${escapeHtml(project.title)}">
+        ${chatItems}
       </div>
     </article>
   `;
@@ -193,9 +187,6 @@ function projectCard(project) {
 
 function renderProjects() {
   const projects = visibleProjects();
-  els.projectGrid.classList.toggle("list", state.view === "list");
-  els.gridButton.classList.toggle("active", state.view === "grid");
-  els.listButton.classList.toggle("active", state.view === "list");
   els.emptyState.hidden = projects.length > 0;
   els.projectGrid.hidden = projects.length === 0;
   els.projectGrid.innerHTML = projects.map(projectCard).join("");
@@ -214,6 +205,23 @@ function renderProjects() {
 function render() {
   renderFilters();
   renderProjects();
+}
+
+async function loadProjectChats(projectPath) {
+  if (state.chatCache.has(projectPath) || state.chatLoading.has(projectPath)) return;
+
+  state.chatLoading.add(projectPath);
+  renderProjects();
+
+  try {
+    const data = await fetchJson(`/api/chats?path=${encodeURIComponent(projectPath)}`);
+    state.chatCache.set(projectPath, data.chats || []);
+  } catch {
+    state.chatCache.set(projectPath, []);
+  } finally {
+    state.chatLoading.delete(projectPath);
+    renderProjects();
+  }
 }
 
 async function loadProjects() {
@@ -237,6 +245,10 @@ async function openProject(projectPath) {
   const project = state.projects.find((item) => item.path === projectPath);
   if (!project) return;
 
+  const now = Date.now();
+  if (lastOpen.path === projectPath && now - lastOpen.ms < 800) return;
+  lastOpen = { path: projectPath, ms: now };
+
   state.selectedPath = projectPath;
   renderProjects();
   showToast(`Opening ${project.title}`);
@@ -251,11 +263,17 @@ async function openProject(projectPath) {
   }
 }
 
-async function revealProject(projectPath) {
+async function openChat(projectPath, chatId) {
+  const project = state.projects.find((item) => item.path === projectPath);
+  const chat = state.chatCache.get(projectPath)?.find((item) => item.id === chatId);
+  if (!project || !chat) return;
+
+  showToast(`Opening ${project.title} for "${chat.title}"`);
+
   try {
-    await fetchJson("/api/reveal", {
+    await fetchJson("/api/open-chat", {
       method: "POST",
-      body: JSON.stringify({ path: projectPath }),
+      body: JSON.stringify({ path: projectPath, chatId }),
     });
   } catch (error) {
     showToast(error.message);
@@ -288,6 +306,8 @@ function selectProject(projectPath) {
 
 els.searchInput.value = state.query;
 els.sortSelect.value = state.sort;
+els.scaleSlider.value = state.scale;
+applyScale();
 
 els.searchInput.addEventListener("input", (event) => {
   state.query = event.target.value.trim();
@@ -301,16 +321,10 @@ els.sortSelect.addEventListener("change", (event) => {
   renderProjects();
 });
 
-els.gridButton.addEventListener("click", () => {
-  state.view = "grid";
-  localStorage.setItem("codexFinder.view", state.view);
-  renderProjects();
-});
-
-els.listButton.addEventListener("click", () => {
-  state.view = "list";
-  localStorage.setItem("codexFinder.view", state.view);
-  renderProjects();
+els.scaleSlider.addEventListener("input", (event) => {
+  state.scale = event.target.value;
+  localStorage.setItem("codexFinder.scale", state.scale);
+  applyScale();
 });
 
 els.refreshButton.addEventListener("click", loadProjects);
@@ -327,30 +341,44 @@ els.favoriteFilter.addEventListener("click", () => {
   render();
 });
 
-els.dateFilters.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-date]");
-  if (!button) return;
-  state.showFavorites = false;
-  state.activeDate = button.dataset.date;
-  render();
-});
-
 els.projectGrid.addEventListener("click", (event) => {
   const card = event.target.closest(".project-card");
   if (!card) return;
 
   const actionButton = event.target.closest("[data-action]");
   const projectPath = card.dataset.path;
-  selectProject(projectPath);
+  loadProjectChats(projectPath);
 
-  if (!actionButton) return;
+  if (!actionButton && event.detail === 2) {
+    selectProject(projectPath);
+    openProject(projectPath);
+    return;
+  }
+
+  if (!actionButton) {
+    selectProject(projectPath);
+    return;
+  }
+
   const action = actionButton.dataset.action;
-  if (action === "open") openProject(projectPath);
-  if (action === "reveal") revealProject(projectPath);
   if (action === "favorite") toggleFavorite(projectPath);
+  if (action === "chat") openChat(projectPath, actionButton.dataset.chatId);
+});
+
+els.projectGrid.addEventListener("mouseover", (event) => {
+  const card = event.target.closest(".project-card");
+  if (!card) return;
+  loadProjectChats(card.dataset.path);
+});
+
+els.projectGrid.addEventListener("focusin", (event) => {
+  const card = event.target.closest(".project-card");
+  if (!card) return;
+  loadProjectChats(card.dataset.path);
 });
 
 els.projectGrid.addEventListener("dblclick", (event) => {
+  if (event.target.closest("[data-action]")) return;
   const card = event.target.closest(".project-card");
   if (card) openProject(card.dataset.path);
 });

@@ -5,7 +5,10 @@ const fsSync = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
+const { promisify } = require("node:util");
+
+const execFileAsync = promisify(execFile);
 
 const ROOT = path.resolve(
   process.env.CODEX_FINDER_ROOT || path.join(os.homedir(), "Documents", "Codex"),
@@ -16,6 +19,7 @@ const CODEX_CLI =
 const STATIC_DIR = path.join(__dirname, "public");
 const STATE_FILE = path.join(__dirname, ".codex-finder-state.json");
 const CODEX_CONFIG_FILE = path.join(os.homedir(), ".codex", "config.toml");
+const CODEX_STATE_DB = path.join(os.homedir(), ".codex", "state_5.sqlite");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -360,6 +364,35 @@ async function getAllowedProjectPaths() {
   return new Set(projects.map((project) => project.path));
 }
 
+function sqliteString(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+async function readProjectChats(projectPath) {
+  if (!(await pathExists(CODEX_STATE_DB))) return [];
+
+  const sql = `
+    SELECT id, title, updated_at_ms AS updatedMs
+    FROM threads
+    WHERE archived = 0 AND cwd = ${sqliteString(projectPath)}
+    ORDER BY updated_at_ms DESC
+    LIMIT 8
+  `;
+
+  try {
+    const { stdout } = await execFileAsync("sqlite3", ["-json", CODEX_STATE_DB, sql], {
+      maxBuffer: 1024 * 1024,
+    });
+    return JSON.parse(stdout || "[]").map((chat) => ({
+      id: chat.id,
+      title: chat.title || "Untitled chat",
+      updatedMs: Number(chat.updatedMs) || 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function requireProjectPath(rawPath) {
   if (typeof rawPath !== "string" || rawPath.trim() === "") {
     throw new Error("A project path is required");
@@ -442,11 +475,37 @@ async function handleApi(req, res, url) {
       return sendJson(res, 200, await readState());
     }
 
+    if (req.method === "GET" && url.pathname === "/api/chats") {
+      const targetPath = await requireProjectPath(url.searchParams.get("path"));
+      return sendJson(res, 200, {
+        path: targetPath,
+        chats: await readProjectChats(targetPath),
+      });
+    }
+
     if (req.method === "POST" && url.pathname === "/api/open") {
       const body = await readJsonBody(req);
       const targetPath = await requireProjectPath(body.path);
       const launch = await openInCodex(targetPath);
       return sendJson(res, 200, { ok: true, path: targetPath, launch });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/open-chat") {
+      const body = await readJsonBody(req);
+      const targetPath = await requireProjectPath(body.path);
+      const chats = await readProjectChats(targetPath);
+      const chat = chats.find((item) => item.id === body.chatId);
+      if (!chat) {
+        throw new Error("Chat is not listed for this project");
+      }
+      const launch = await openInCodex(targetPath);
+      return sendJson(res, 200, {
+        ok: true,
+        path: targetPath,
+        chat,
+        launch,
+        selectedChat: false,
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/api/reveal") {
