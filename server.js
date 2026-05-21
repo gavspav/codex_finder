@@ -368,6 +368,10 @@ function sqliteString(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function chatDeepLink(chatId) {
+  return `codex://threads/${chatId}`;
+}
+
 async function readProjectChats(projectPath) {
   if (!(await pathExists(CODEX_STATE_DB))) return [];
 
@@ -387,6 +391,7 @@ async function readProjectChats(projectPath) {
       id: chat.id,
       title: chat.title || "Untitled chat",
       updatedMs: Number(chat.updatedMs) || 0,
+      deepLink: chatDeepLink(chat.id),
     }));
   } catch {
     return [];
@@ -437,6 +442,12 @@ async function openInCodex(targetPath) {
   return { command: "open", args: ["-a", "Codex", targetPath] };
 }
 
+async function openCodexChat(chat) {
+  const deepLink = chatDeepLink(chat.id);
+  await launchDetached("open", [deepLink]);
+  return { command: "open", args: [deepLink], deepLink };
+}
+
 async function revealInFinder(targetPath) {
   await launchDetached("open", ["-R", targetPath]);
   return { command: "open", args: ["-R", targetPath] };
@@ -464,10 +475,13 @@ async function handleApi(req, res, url) {
         sourceLabel: catalog.sourceLabel,
         count: projects.length,
         favorites: state.favorites,
-        projects: projects.map((project) => ({
-          ...project,
-          favorite: favoriteSet.has(project.path),
-        })),
+        projects: await Promise.all(
+          projects.map(async (project) => ({
+            ...project,
+            favorite: favoriteSet.has(project.path),
+            chats: await readProjectChats(project.path),
+          })),
+        ),
       });
     }
 
@@ -498,13 +512,13 @@ async function handleApi(req, res, url) {
       if (!chat) {
         throw new Error("Chat is not listed for this project");
       }
-      const launch = await openInCodex(targetPath);
+      const launch = await openCodexChat(chat);
       return sendJson(res, 200, {
         ok: true,
         path: targetPath,
         chat,
         launch,
-        selectedChat: false,
+        selectedChat: true,
       });
     }
 

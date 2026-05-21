@@ -154,22 +154,21 @@ function renderFilters() {
 
 function projectCard(project) {
   const isSelected = state.selectedPath === project.path;
-  const chats = state.chatCache.get(project.path);
+  const chats = state.chatCache.get(project.path) || project.chats || [];
   const chatState = state.chatLoading.has(project.path) ? "Loading..." : "No recent chats";
-  const chatItems = chats
-    ? chats
-        .map(
-          (chat) => `
-            <button class="chat-item" type="button" data-action="chat" data-chat-id="${escapeHtml(chat.id)}">
-              <span>${escapeHtml(chat.title)}</span>
-            </button>
-          `,
-        )
-        .join("") || `<div class="chat-empty">${chatState}</div>`
-    : `<div class="chat-empty">${chatState}</div>`;
+  const chatItems =
+    chats
+      .map(
+        (chat) => `
+          <button class="chat-item" type="button" data-action="chat" data-chat-id="${escapeHtml(chat.id)}">
+            <span>${escapeHtml(chat.title)}</span>
+          </button>
+        `,
+      )
+      .join("") || `<div class="chat-empty">${chatState}</div>`;
 
   return `
-    <article class="project-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(project.path)}" tabindex="0" aria-label="${escapeHtml(project.title)}" title="${escapeHtml(project.relativePath)}">
+    <article class="project-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(project.path)}" tabindex="0" aria-label="${escapeHtml(project.title)}">
       <div class="folder-art">
         <span class="folder-tab"></span>
         <span class="folder-body"></span>
@@ -211,7 +210,6 @@ async function loadProjectChats(projectPath) {
   if (state.chatCache.has(projectPath) || state.chatLoading.has(projectPath)) return;
 
   state.chatLoading.add(projectPath);
-  renderProjects();
 
   try {
     const data = await fetchJson(`/api/chats?path=${encodeURIComponent(projectPath)}`);
@@ -230,6 +228,7 @@ async function loadProjects() {
   try {
     const [config, data] = await Promise.all([fetchJson("/api/config"), fetchJson("/api/projects")]);
     state.projects = data.projects;
+    state.chatCache = new Map(state.projects.map((project) => [project.path, project.chats || []]));
     els.rootLabel.textContent = data.sourceLabel || config.root;
     setStatus(config.codexCliAvailable ? "Ready" : "Fallback launch", "ready");
     render();
@@ -268,7 +267,7 @@ async function openChat(projectPath, chatId) {
   const chat = state.chatCache.get(projectPath)?.find((item) => item.id === chatId);
   if (!project || !chat) return;
 
-  showToast(`Opening ${project.title} for "${chat.title}"`);
+  showToast(`Opening "${chat.title}"`);
 
   try {
     await fetchJson("/api/open-chat", {
@@ -365,17 +364,23 @@ els.projectGrid.addEventListener("click", (event) => {
   if (action === "chat") openChat(projectPath, actionButton.dataset.chatId);
 });
 
-els.projectGrid.addEventListener("mouseover", (event) => {
+function showChatPopover(event) {
   const card = event.target.closest(".project-card");
   if (!card) return;
-  loadProjectChats(card.dataset.path);
-});
+  card.classList.add("show-chats");
+}
 
-els.projectGrid.addEventListener("focusin", (event) => {
+function hideChatPopover(event) {
   const card = event.target.closest(".project-card");
   if (!card) return;
-  loadProjectChats(card.dataset.path);
-});
+  if (event.relatedTarget && card.contains(event.relatedTarget)) return;
+  card.classList.remove("show-chats");
+}
+
+els.projectGrid.addEventListener("pointerover", showChatPopover);
+els.projectGrid.addEventListener("pointerout", hideChatPopover);
+els.projectGrid.addEventListener("mouseover", showChatPopover);
+els.projectGrid.addEventListener("mouseout", hideChatPopover);
 
 els.projectGrid.addEventListener("dblclick", (event) => {
   if (event.target.closest("[data-action]")) return;

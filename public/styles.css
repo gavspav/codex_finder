@@ -259,6 +259,7 @@ p {
   column-gap: calc(58px * var(--folder-scale));
   row-gap: calc(66px * var(--folder-scale));
   align-items: start;
+  overflow: visible;
 }
 
 .project-grid.list {
@@ -266,6 +267,9 @@ p {
 }
 
 .project-card {
+  position: relative;
+  overflow: visible;
+  z-index: 1;
   width: calc(144px * var(--folder-scale));
   min-height: calc(152px * var(--folder-scale));
   border: 0;
@@ -283,6 +287,12 @@ p {
 
 .project-card:hover .folder-body {
   filter: brightness(1.03);
+}
+
+.project-card:hover,
+.project-card.show-chats,
+.project-card:focus-within {
+  z-index: 20;
 }
 
 .project-card.selected {
@@ -393,7 +403,7 @@ p {
 .chat-popover {
   position: absolute;
   z-index: 8;
-  top: calc(100% - 18px);
+  top: calc(100% - 6px);
   left: 50%;
   width: 260px;
   max-height: 236px;
@@ -412,6 +422,7 @@ p {
 }
 
 .project-card:hover .chat-popover,
+.project-card.show-chats .chat-popover,
 .project-card:focus-within .chat-popover {
   opacity: 1;
   pointer-events: auto;
