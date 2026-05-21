@@ -1,3 +1,4 @@
 .codex-finder-state.json
+.DS_Store
 verification/*.jpg
 verification/*.png

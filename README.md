@@ -25,7 +25,7 @@ Click `Open` on a folder to launch it in Codex. The server uses:
 You can override the scanned folder or port:
 
 ```bash
-CODEX_FINDER_ROOT="/Users/regvardy/Documents/Codex" CODEX_FINDER_PORT=4821 npm start
+CODEX_FINDER_ROOT="$HOME/Documents/Codex" CODEX_FINDER_PORT=4821 npm start
 ```
 
 Favourites are stored in `.codex-finder-state.json` beside the app.
