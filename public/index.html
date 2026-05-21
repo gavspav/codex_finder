@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="icon-folder" viewBox="0 0 24 24">
+        <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2h6.5A2.5 2.5 0 0 1 21 8.5V17a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6.5Z" />
+        <path d="M3 9h18" />
+      </symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </symbol>
+      <symbol id="icon-grid" viewBox="0 0 24 24">
+        <rect x="4" y="4" width="6" height="6" rx="1" />
+        <rect x="14" y="4" width="6" height="6" rx="1" />
+        <rect x="4" y="14" width="6" height="6" rx="1" />
+        <rect x="14" y="14" width="6" height="6" rx="1" />
+      </symbol>
+      <symbol id="icon-list" viewBox="0 0 24 24">
+        <path d="M8 6h12" />
+        <path d="M8 12h12" />
+        <path d="M8 18h12" />
+        <circle cx="4" cy="6" r="1" />
+        <circle cx="4" cy="12" r="1" />
+        <circle cx="4" cy="18" r="1" />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+        <path d="M20 4v6h-6" />
+      </symbol>
+      <symbol id="icon-open" viewBox="0 0 24 24">
+        <path d="M7 17 17 7" />
+        <path d="M9 7h8v8" />
+        <path d="M19 17v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+      </symbol>
+      <symbol id="icon-star" viewBox="0 0 24 24">
+        <path d="m12 3 2.7 5.47 6.03.88-4.37 4.26 1.03 6.01L12 16.79l-5.39 2.83 1.03-6.01-4.37-4.26 6.03-.88L12 3Z" />
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <path d="m9 18 6-6-6-6" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg aria-hidden="true"><use href="#icon-folder"></use></svg>
+          </div>
+          <div>
+            <h1>Codex Finder</h1>
+            <p id="rootLabel"></p>
+          </div>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="View controls">
+          <label class="search-box">
+            <svg aria-hidden="true"><use href="#icon-search"></use></svg>
+            <input id="searchInput" type="search" autocomplete="off" placeholder="Search folders" />
+          </label>
+
+          <select id="sortSelect" aria-label="Sort folders">
+            <option value="recent">Recently changed</option>
+            <option value="date">Date created</option>
+            <option value="name">Name</option>
+            <option value="files">File count</option>
+          </select>
+
+          <div class="segmented" aria-label="View mode">
+            <button id="gridButton" class="icon-button active" type="button" aria-label="Grid view">
+              <svg aria-hidden="true"><use href="#icon-grid"></use></svg>
+            </button>
+            <button id="listButton" class="icon-button" type="button" aria-label="List view">
+              <svg aria-hidden="true"><use href="#icon-list"></use></svg>
+            </button>
+          </div>
+
+          <button id="refreshButton" class="icon-button" type="button" aria-label="Refresh folders">
+            <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="filter-panel" aria-label="Folder filters">
+          <div class="panel-block">
+            <button id="allFilter" class="filter-row active" type="button">
+              <span>All folders</span>
+              <strong id="allCount">0</strong>
+            </button>
+            <button id="favoriteFilter" class="filter-row" type="button">
+              <span>Favourites</span>
+              <strong id="favoriteCount">0</strong>
+            </button>
+          </div>
+
+          <div class="panel-block">
+            <div class="panel-label">Dates</div>
+            <div id="dateFilters" class="date-list"></div>
+          </div>
+        </aside>
+
+        <section class="content-area" aria-live="polite">
+          <div class="content-header">
+            <div>
+              <h2 id="viewTitle">Folders</h2>
+              <p id="resultMeta">Loading...</p>
+            </div>
+            <div id="statusPill" class="status-pill">Starting</div>
+          </div>
+
+          <div id="emptyState" class="empty-state" hidden>
+            <svg aria-hidden="true"><use href="#icon-search"></use></svg>
+            <h3>No folders found</h3>
+          </div>
+
+          <div id="projectGrid" class="project-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

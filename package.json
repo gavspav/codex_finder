@@ -1,0 +1,10 @@
+{
+  "name": "codex-finder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Finder-style local launcher for Codex workspaces.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
