@@ -20,6 +20,8 @@ Click `Open` on a folder to launch it in Codex. The server uses:
 /Applications/Codex.app/Contents/Resources/codex app /path/to/folder
 ```
 
+Tested on macOS. Other platforms need `CODEX_CLI` set to a valid Codex CLI path.
+
 ## Settings
 
 You can override the scanned folder or port:
