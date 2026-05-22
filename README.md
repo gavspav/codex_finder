@@ -2,6 +2,8 @@
 
 A small local launcher that reads Codex's configured projects and shows them in a Finder-style icon view.
 
+![Codex Finder project grid](public/codex-finder-screenshot.png)
+
 ## Run
 
 ```bash
